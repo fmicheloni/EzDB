@@ -5,7 +5,23 @@ use std::{
     net::TcpListener,
 };
 
-use crate::engine::DbEngine;
+use serde::Serialize;
+
+use crate::engine::{DbEngine, Outcome};
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum DbResponse {
+    Ok {
+        ok: bool,
+        #[serde(flatten)]
+        outcome: Outcome,
+    },
+    Err {
+        ok: bool,
+        error: String,
+    },
+}
 
 fn main() -> std::io::Result<()> {
     let mut db_engine = DbEngine::new();
@@ -26,13 +42,18 @@ fn main() -> std::io::Result<()> {
             println!("got: {}", line.trim_end());
             let response = match parser::parse(&line) {
                 Ok(cmd) => match db_engine.execute_command(cmd) {
-                    Ok(Some(m)) => m.to_string(),
-                    Ok(None) => "OK".to_string(),
-                    Err(e) => format!("ERROR: {:?}", e),
+                    Ok(outcome) => DbResponse::Ok { ok: true, outcome },
+                    Err(e) => DbResponse::Err {
+                        ok: false,
+                        error: format!("{:?}", e),
+                    },
                 },
-                Err(e) => format!("ERROR: {:?}", e),
+                Err(e) => DbResponse::Err {
+                    ok: false,
+                    error: format!("{:?}", e),
+                },
             };
-            writeln!(writer, "{}", response)?;
+            writeln!(writer, "{}", serde_json::to_string(&response).unwrap())?;
         }
     }
     Ok(())

@@ -23,7 +23,6 @@ pub enum Command {
 
 #[derive(Debug)]
 pub enum ParseError {
-    Other,
     MissingSemicolon,
     EmptyParameters,
     IncorrectParameters,
