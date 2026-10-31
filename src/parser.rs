@@ -26,7 +26,6 @@ pub enum ParseError {
     MissingSemicolon,
     EmptyParameters,
     IncorrectParameters(String),
-    Unknown,
     InvalidCommandType(String),
 }
 
