@@ -25,8 +25,9 @@ pub enum Command {
 pub enum ParseError {
     MissingSemicolon,
     EmptyParameters,
-    IncorrectParameters,
+    IncorrectParameters(String),
     Unknown,
+    InvalidCommandType(String),
 }
 
 // parse line, returns Command
@@ -50,7 +51,9 @@ pub fn parse(input: &str) -> Result<Command, ParseError> {
     }
     let (first_param, second_param): (&str, Option<&str>) = match rest {
         r if r.starts_with('"') => {
-            let end = r[1..].find('"').ok_or(ParseError::IncorrectParameters)?;
+            let end = r[1..].find('"').ok_or(ParseError::IncorrectParameters(
+                "Invalid quoted string".to_string(),
+            ))?;
 
             let first = &r[1..1 + end];
             let tail = r[1 + end + 1..].trim();
@@ -80,12 +83,20 @@ pub fn parse(input: &str) -> Result<Command, ParseError> {
         ("DELETE", first_param, _) => Command::Delete(Delete {
             key: first_param.to_string(),
         }),
-        ("INSERT", _, None) => return Err(ParseError::IncorrectParameters),
+        ("INSERT", _, None) => {
+            return Err(ParseError::IncorrectParameters(
+                "Missing value. E.g. \"INSERT hello world;\"".to_string(),
+            ));
+        }
         ("INSERT", first_param, Some(second_param)) => Command::Insert(Insert {
             key: first_param.to_string(),
             val: second_param.to_string(),
         }),
-        (_, _, _) => return Err(ParseError::Unknown),
+        (_, _, _) => {
+            return Err(ParseError::InvalidCommandType(
+                "Command type should be GET/INSERT/DELETE".to_string(),
+            ));
+        }
     };
 
     Ok(prepared_command)
