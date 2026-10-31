@@ -25,14 +25,14 @@ fn main() -> std::io::Result<()> {
             }
             println!("got: {}", line.trim_end());
             let response = match parser::parse(&line) {
-                Ok(cmd) => db_engine.execute_command(cmd),
-                Err(e) => Some(format!("ERROR: {:?}", e)),
+                Ok(cmd) => match db_engine.execute_command(cmd) {
+                    Ok(Some(m)) => m.to_string(),
+                    Ok(None) => "OK".to_string(),
+                    Err(e) => format!("ERROR: {:?}", e),
+                },
+                Err(e) => format!("ERROR: {:?}", e),
             };
-            writeln!(
-                writer,
-                "{}",
-                response.unwrap_or("Something went wrong...".to_string())
-            )?;
+            writeln!(writer, "{}", response)?;
         }
     }
     Ok(())
