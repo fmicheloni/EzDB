@@ -3,6 +3,8 @@ mod parser;
 use std::{
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
+    sync::{Arc, Mutex},
+    thread,
 };
 
 use serde::Serialize;
@@ -23,7 +25,7 @@ enum DbResponse {
     },
 }
 
-fn handle_client(db_engine: &mut DbEngine, stream: TcpStream) -> std::io::Result<()> {
+fn handle_client(db_engine: &Mutex<DbEngine>, stream: TcpStream) -> std::io::Result<()> {
     let mut writer = stream.try_clone()?;
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
@@ -38,13 +40,16 @@ fn handle_client(db_engine: &mut DbEngine, stream: TcpStream) -> std::io::Result
         }
         println!("got: {}", line.trim_end());
         let response = match parser::parse(&line) {
-            Ok(cmd) => match db_engine.execute_command(cmd) {
-                Ok(outcome) => DbResponse::Ok { ok: true, outcome },
-                Err(e) => DbResponse::Err {
-                    ok: false,
-                    error: format!("{:?}", e),
-                },
-            },
+            Ok(cmd) => {
+                let result = db_engine.lock().unwrap().execute_command(cmd);
+                match result {
+                    Ok(outcome) => DbResponse::Ok { ok: true, outcome },
+                    Err(e) => DbResponse::Err {
+                        ok: false,
+                        error: format!("{:?}", e),
+                    },
+                }
+            }
             Err(e) => DbResponse::Err {
                 ok: false,
                 error: format!("{:?}", e),
@@ -55,13 +60,31 @@ fn handle_client(db_engine: &mut DbEngine, stream: TcpStream) -> std::io::Result
 }
 
 fn main() -> std::io::Result<()> {
-    let mut db_engine = DbEngine::new();
+    // without atomic reference counting we cannot share multiple mutable referenecs
+    let db_engine = Arc::new(Mutex::new(DbEngine::new()));
+
     let listener = TcpListener::bind("127.0.0.1:6379")?;
 
     for stream in listener.incoming() {
-        if let Err(e) = stream.and_then(|s| handle_client(&mut db_engine, s)) {
-            eprintln!("client error: {e}");
-        }
+        let stream = match stream {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("failed to accept connection: {e}");
+                continue;
+            }
+        };
+        let db = Arc::clone(&db_engine);
+
+        // TODO: very slow, use thread pool / async io
+        thread::spawn(move || {
+            if let Err(e) = handle_client(&db, stream) {
+                eprintln!("client error: {e}");
+            }
+        });
+
+        // if let Err(e) = stream.and_then(|s| handle_client(&db_engine, s)) {
+        //     eprintln!("client error: {e}");
+        // }
     }
     Ok(())
 }
