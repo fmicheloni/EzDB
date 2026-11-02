@@ -1,11 +1,13 @@
 mod engine;
 mod parser;
+mod threadpool;
 use std::{
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex},
-    thread,
 };
+
+use crate::threadpool::ThreadPool;
 
 use serde::Serialize;
 
@@ -65,6 +67,9 @@ fn main() -> std::io::Result<()> {
 
     let listener = TcpListener::bind("127.0.0.1:6379")?;
 
+    // TODO: need to extract threads into a configuration logic
+    let pool = ThreadPool::new(8);
+
     for stream in listener.incoming() {
         let stream = match stream {
             Ok(s) => s,
@@ -75,16 +80,11 @@ fn main() -> std::io::Result<()> {
         };
         let db = Arc::clone(&db_engine);
 
-        // TODO: very slow, use thread pool / async io
-        thread::spawn(move || {
+        pool.execute(move || {
             if let Err(e) = handle_client(&db, stream) {
                 eprintln!("client error: {e}");
             }
         });
-
-        // if let Err(e) = stream.and_then(|s| handle_client(&db_engine, s)) {
-        //     eprintln!("client error: {e}");
-        // }
     }
     Ok(())
 }
